@@ -12,7 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	chromiumprebuilt "test/proxy/chromium-prebuilt"
+
+	chromiumprebuilt "github.com/clementauger/torproxy/chromium-prebuilt"
 
 	"github.com/clementauger/tor-prebuilt/embedded"
 	"github.com/cretz/bine/tor"
