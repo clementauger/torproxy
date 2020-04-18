@@ -29,10 +29,44 @@ func (p Provider) AutoDetectURL() (url string, err error) {
 	return
 }
 
+func (p Provider) SystemWidePath() (binpath string, err error) {
+	if strings.HasPrefix(runtime.GOOS, "windo") == false {
+		paths := []string{
+			"chromium-browser",
+			"google-chrome",
+		}
+		for _, pa := range paths {
+			path, err := exec.LookPath(pa)
+			if err != nil {
+				continue
+			}
+			return path, nil
+		}
+		return "", fmt.Errorf("binary not found in PATH (%v)", paths)
+	}
+	path, err := exec.LookPath("chrome.exe")
+	if err == nil {
+		return path, nil
+	}
+	path = `C:\Program Files (x86)\Google\Chrome\Application\Chrome.exe`
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return path, nil
+	}
+	return "", fmt.Errorf("chrome.exe not found in PATH")
+}
+
 func (p Provider) Install(socksAddr string) (err error) {
 	if strings.HasPrefix(runtime.GOOS, "windo") == false {
-		return nil // user must install via package manager
+		_, err := p.SystemWidePath()
+		return err // user must have it within its PATH
 	}
+	_, err = p.SystemWidePath()
+	if err == nil {
+		return nil // is in PATH
+	}
+
+	// proceed install
+
 	url, err := p.AutoDetectURL()
 	if err != nil {
 		return err
@@ -43,11 +77,11 @@ func (p Provider) Install(socksAddr string) (err error) {
 		return err
 	}
 
-	h = filepath.Join(h, ".torproxy/")
+	h = filepath.Join(h, ".torproxy")
 	os.MkdirAll(h, os.ModePerm)
 	dlDir := filepath.Join(h, "chromium")
 	os.MkdirAll(dlDir, os.ModePerm)
-	binDir := filepath.Join(h, "chromium/bin")
+	binDir := filepath.Join(h, "chromium", "bin")
 	os.MkdirAll(binDir, os.ModePerm)
 
 	chrExe := filepath.Join(binDir, "chrome.exe")
@@ -133,27 +167,13 @@ func (p Provider) LookupChromeArgs() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	dlDir := filepath.Join(h, ".torproxy/chromium")
+	dlDir := filepath.Join(h, ".torproxy", "chromium")
 	chrIni := filepath.Join(dlDir, "chrlauncher.ini.updated")
-	if _, err := os.Stat(chrIni); os.IsNotExist(err) {
-		return nil, err
-	}
-	chrB, err := ioutil.ReadFile(chrIni)
-	if err != nil {
-		return nil, err
-	}
 
 	var extraArgs []string
 	extraArgs = append(extraArgs, "/autodownload")
 	extraArgs = append(extraArgs, "/wait")
 	extraArgs = append(extraArgs, "/ini="+chrIni)
-	for _, line := range strings.Split(string(chrB), "\n") {
-		if strings.HasPrefix(line, "ChromiumCommandLine=") {
-			u := strings.TrimPrefix(line, "ChromiumCommandLine=")
-			extraArgs = append(extraArgs, strings.Split(u, " ")...)
-			break
-		}
-	}
 	return extraArgs, nil
 }
 
@@ -165,10 +185,23 @@ func (p Provider) ResolveDataDir() (h string, err error) {
 	return
 }
 
+func (p Provider) ProfilePath() (string, error) {
+	h, err := p.ResolveDataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(h, ".torproxy", "profile"), nil
+}
+
 func (p Provider) BinPath() (string, error) {
 	if strings.HasPrefix(runtime.GOOS, "windo") == false {
-		return "chromium-browser", nil
+		return p.SystemWidePath()
 	}
+	binpath, err := p.SystemWidePath()
+	if err == nil {
+		return binpath, nil // is in PATH
+	}
+
 	h, err := p.ResolveDataDir()
 	if err != nil {
 		return "", err
@@ -178,16 +211,16 @@ func (p Provider) BinPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h = filepath.Join(h, ".torproxy/")
+	h = filepath.Join(h, ".torproxy")
 	dst := filepath.Join(h, filepath.Base(url))
 	if _, err := os.Stat(dst); os.IsNotExist(err) {
 		return "", err
 	}
-	g, _ := filepath.Glob(filepath.Join(h, "chromium/chrlauncher*.exe"))
+	g, _ := filepath.Glob(filepath.Join(h, "chromium", "chrlauncher*.exe"))
 	if len(g) > 0 {
 		return g[0], nil
 	}
-	h = filepath.Join(h, "chromium/bin/chrome.exe")
+	h = filepath.Join(h, "chromium", "bin", "chrome.exe")
 	if _, err := os.Stat(h); os.IsNotExist(err) {
 		return "", err
 	}
